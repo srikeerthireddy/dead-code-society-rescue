@@ -1,14 +1,24 @@
+// SMELL: [MEDIUM] Using var instead of const/let. Leads to hoisting bugs and unclear variable scope.
 var express = require('express');
+// SMELL: [MEDIUM] Using var instead of const/let. Leads to hoisting bugs and unclear variable scope.
 var router = express.Router();
+// SMELL: [MEDIUM] Using var instead of const/let. Leads to hoisting bugs and unclear variable scope.
 var User = require('../models/User'); // user model
+// SMELL: [MEDIUM] Using var instead of const/let. Leads to hoisting bugs and unclear variable scope.
 var Shipment = require('../models/Shipment'); // shipment model
+// SMELL: [MEDIUM] Using var instead of const/let. Leads to hoisting bugs and unclear variable scope.
 var jwt = require('jsonwebtoken'); // auth
+// SMELL: [CRITICAL] MD5 is not a password hashing algorithm. A rainbow table can crack this in under a second.
 var md5 = require('md5'); // md5 hashing
+// SMELL: [MEDIUM] Using var instead of const/let. Leads to hoisting bugs and unclear variable scope.
 var mongoose = require('mongoose'); // for id checking
+// SMELL: [MEDIUM] Unused import - path is required but never used in this file.
 var path = require('path'); // unused import
+// SMELL: [MEDIUM] Unused import - fs is required but never used in this file.
 var fs = require('fs'); // unused import
+// SMELL: [MEDIUM] Unused import - http is required but never used in this file.
 var http = require('http'); // unused import
-var os = require('os'); // unused import
+// SMELL: [MEDIUM] Unused import - os is required but never used in routes setup, only in /status endpoint.
 
 // for auth
 var JWT_SECRET = process.env.JWT_SECRET || 'secret123';
@@ -19,10 +29,13 @@ var JWT_SECRET = process.env.JWT_SECRET || 'secret123';
 
 // POST /register - make a new account
 router.post('/register', function(req, res) {
+    // SMELL: [CRITICAL] NoSQL injection vulnerability. Using spread operator on untrusted input allows attackers to inject MongoDB operators like {"$ne": null}.
+    // SMELL: [HIGH] No input validation. Email format not checked, password length not enforced, name could be anything.
     // Just save whatever the user sends in req.body.
     // Spread operator enables NoSQL injection since we take anything!
     var userData = { ...req.body };
     
+    // SMELL: [CRITICAL] MD5 is not a password hashing algorithm. A rainbow table can crack this in under a second.
     // md5 is fine for hobby projects, its very fast
     userData.password = md5(userData.password);
 
@@ -46,6 +59,8 @@ router.post('/register', function(req, res) {
 
 // POST /login - get a token
 router.post('/login', function(req, res) {
+    // SMELL: [HIGH] Inline auth logic duplicated in every route. Should be extracted to middleware.
+    // SMELL: [CRITICAL] NoSQL injection via query parameters. Attacker can pass {"$ne": null} as email.
     // find user by email - direct spread again for injection
     User.findOne({ email: req.body.email })
         .then(function(user) {
@@ -53,6 +68,7 @@ router.post('/login', function(req, res) {
                 return res.json({ error: 'No user found with that email' });
             }
 
+            // SMELL: [CRITICAL] MD5 comparison for password verification. Should use bcrypt.compare() for secure comparison.
             // check md5 password
             if (user.password === md5(req.body.password)) {
                 // sign jwt
@@ -88,6 +104,7 @@ router.post('/login', function(req, res) {
 // GET /shipments - list all shipments for user
 router.get('/shipments', function(req, res) {
     // --- AUTH BLOCK START ---
+    // SMELL: [HIGH] Authentication logic is duplicated inline in every protected route. Extract to middleware.
     var token = req.headers['authorization'];
     if (!token) return res.json({ error: 'Unauthorized: missing token' });
     
@@ -99,6 +116,9 @@ router.get('/shipments', function(req, res) {
 
         Shipment.find({ userId: req.userId })
             .then(function(shipments) {
+                // SMELL: [HIGH] N+1 query problem. For each shipment, fetching user data in a loop causes O(n) extra queries.
+                // SMELL: [HIGH] Missing .catch() on nested promise. If User.findById fails, it silently continues.
+                // SMELL: [MEDIUM] Using var and loop with closure - confusing code pattern.
                 // N+1 problem: fetching user details for each shipment in a loop
                 var finalData = [];
                 var itemsProcessed = 0;
@@ -241,6 +261,7 @@ router.delete('/shipments/:id', function(req, res) {
         req.userRole = decoded.role;
         // --- AUTH BLOCK END ---
 
+        // SMELL: [CRITICAL] Authorization vulnerability. No permission check. Any authenticated user can delete any shipment.
         // No permission check! Anyone can delete any shipment if they have a token.
         Shipment.findByIdAndDelete(req.params.id)
             .then(function() {
@@ -271,11 +292,12 @@ router.get('/profile', function(req, res) {
         User.findById(req.userId)
             .then(function(user) {
                 res.json(user);
-            }); // missing catch
+            }); // SMELL: [HIGH] Missing .catch(). Database errors will crash silently and hang the response.
     });
 });
 
 /*
+// SMELL: [MEDIUM] Dead code. Commented-out endpoints should be removed or properly versioned. Increases maintenance burden.
 // OLD CODE - DO NOT DELETE
 router.get('/all-users', function(req, res) {
     User.find({}).then(u => res.json(u));
@@ -283,6 +305,7 @@ router.get('/all-users', function(req, res) {
 */
 
 /*
+// SMELL: [MEDIUM] Dead code. Debugging endpoints left in production. Should be removed.
 router.post('/test-hash', function(req, res) {
     var h = md5(req.body.p);
     res.json({ h: h });
@@ -304,16 +327,19 @@ router.get('/status', function(req, res) {
     res.json(info);
 });
 
+// SMELL: [MEDIUM] Dead code. Comments padding file to reach line count. Should be removed.
 // padding to hit 400 lines...
 // I love coding in Node.js
 // 2019 was a great year for tech
 // LogiTrack is going to be huge
 // I should ask for a raise after this deploy
 
+// SMELL: [MEDIUM] Useless loop for line padding. No purpose, just wastes CPU and memory.
 for (var i = 0; i < 200; i++) {
     // loops take up lines too right?
 }
 
+// SMELL: [MEDIUM] Technical debt. TODOs left unfixed in production code. These issues block security and maintainability.
 // TODO: fix the N+1 problem later
 // TODO: refactor into proper controllers
 // TODO: add validation library like Joi or Zod
